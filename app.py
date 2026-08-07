@@ -1,11 +1,15 @@
 import concurrent.futures
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
 app = Flask(__name__)
+
+# Fuso orario italiano per Render / Linux
+ROME_TZ = ZoneInfo("Europe/Rome")
 
 # Cache dati (aggiornamento ogni 3 minuti)
 CACHE_TIMEOUT = 180
@@ -96,7 +100,7 @@ def fetch_meteoms():
                     else "N/D"
                 ),
                 "wind": wind.group(1).strip() if wind else "N/D",
-                "updated": datetime.now().strftime("%H:%M:%S"),
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
         print(f"Errore MeteoMS: {e}")
@@ -152,7 +156,7 @@ def fetch_celarda():
                     if wind
                     else "0.0 km/h"
                 ),
-                "updated": datetime.now().strftime("%H:%M:%S"),
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
         print(f"Errore Celarda: {e}")
@@ -200,7 +204,7 @@ def fetch_festisei():
                     else "N/D"
                 ),
                 "wind": wind.group(1) if wind else "N/D",
-                "updated": datetime.now().strftime("%H:%M:%S"),
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
         print(f"Errore Festisei: {e}")
@@ -230,7 +234,7 @@ def fetch_meteomugnai():
             "humidity": hum,
             "pressure": press,
             "wind": wind,
-            "updated": datetime.now().strftime("%H:%M:%S"),
+            "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
         }
     except Exception as e:
         print(f"Errore Meteo Mugnai: {e}")
@@ -262,7 +266,7 @@ def fetch_arsie():
             "humidity": hum,
             "pressure": press,
             "wind": wind,
-            "updated": datetime.now().strftime("%H:%M:%S"),
+            "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
         }
     except Exception as e:
         print(f"Errore Arsiè: {e}")
@@ -279,8 +283,62 @@ def fetch_arsie():
     }
 
 
+def fetch_arpav():
+    url = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=8)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            rows = soup.find_all("tr")
+            for row in rows:
+                cols = [c.get_text(strip=True) for c in row.find_all("td")]
+                if len(cols) >= 3 and re.match(r"\d{2}/\d{2}/\d{4}", cols[0]):
+                    temp_raw = cols[1].replace(",", ".")
+                    hum_raw = cols[2].replace(",", ".")
+                    temp_val = f"{temp_raw} °C" if temp_raw else "N/D"
+                    hum_val = f"{hum_raw} %" if hum_raw else "N/D"
+
+                    wind_val = "N/D"
+                    if len(cols) >= 7:
+                        try:
+                            w_ms = float(cols[6].replace(",", "."))
+                            wind_val = f"{w_ms * 3.6:.1f} km/h"
+                        except ValueError:
+                            wind_val = "N/D"
+
+                    last_time = (
+                        cols[0].split()[-1]
+                        if len(cols[0].split()) > 1
+                        else cols[0]
+                    )
+
+                    return {
+                        "name": "Stazione ARPAV Feltre",
+                        "url": url,
+                        "status": "online",
+                        "temp": temp_val,
+                        "humidity": hum_val,
+                        "pressure": "N/D",
+                        "wind": wind_val,
+                        "updated": last_time,
+                    }
+    except Exception as e:
+        print(f"Errore ARPAV Feltre: {e}")
+
+    return {
+        "name": "Stazione ARPAV Feltre",
+        "url": url,
+        "status": "offline",
+        "temp": "N/D",
+        "humidity": "N/D",
+        "pressure": "N/D",
+        "wind": "N/D",
+        "updated": "Errore",
+    }
+
+
 def get_all_weather_data():
-    now = datetime.now()
+    now = datetime.now(ROME_TZ)
     if (
         cache["last_updated"]
         and (now - cache["last_updated"]).total_seconds() < CACHE_TIMEOUT
@@ -293,10 +351,11 @@ def get_all_weather_data():
         fetch_festisei,
         fetch_meteomugnai,
         fetch_arsie,
+        fetch_arpav,
     ]
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(f) for f in fetchers]
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
