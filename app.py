@@ -1,4 +1,4 @@
-kimport concurrent.futures
+import concurrent.futures
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,15 +7,11 @@ import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
-# Disabilita gli avvisi SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
-
-# Fuso orario italiano
 ROME_TZ = ZoneInfo("Europe/Rome")
 
-# Cache dati (aggiornamento ogni 3 minuti)
 CACHE_TIMEOUT = 180
 cache = {"last_updated": None, "data": []}
 
@@ -26,7 +22,7 @@ HEADERS = {
     )
 }
 
-# --- HELPER METEOTEMPLATE (Mugnai, Arsiè, Feltre Fallback) ---
+# --- HELPER METEOTEMPLATE ---
 
 
 def parse_meteotemplate(url):
@@ -62,7 +58,7 @@ def parse_meteotemplate(url):
     return "N/D", "N/D", "N/D", "N/D"
 
 
-# --- PARSER STAZIONI METEO ---
+# --- FETCHERS STAZIONI METEO ---
 
 
 def fetch_meteoms():
@@ -288,52 +284,37 @@ def fetch_arsie():
 
 
 def fetch_arpav():
-    url = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
+    # Endpoint alternativo JSON/Data ARPAV
+    url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/dati_meteo.php?stazione=217"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+        resp = requests.get(
+            url_arpav, headers=HEADERS, timeout=6, verify=False
+        )
         if resp.status_code == 200:
             text = resp.text
-            # Regex specifica per il formato testo/CSV restituito da ARPAV
-            match = re.search(
-                r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})\s*,\s*[\d\.,]+\s*,\s*[\d\.,]+\s*,\s*[\d\.,]+\s*,\s*(\d{1,3}[\.,]?\d*)",
-                text,
+            # Cerca pattern qualsiasi temperatura/umidita nel body
+            temp_match = re.search(
+                r"TEMP[^\d\-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
             )
-            if not match:
-                match = re.search(
-                    r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})",
-                    text,
-                )
+            hum_match = re.search(r"UMID[^\d]*?(\d{1,3})", text, re.I)
 
-            if match:
-                time_part = match.group(2)
-                temp_raw = match.group(3).replace(",", ".")
-                hum_raw = match.group(4)
-
-                temp_val = f"{temp_raw} °C" if temp_raw else "N/D"
-                hum_val = f"{hum_raw} %" if hum_raw else "N/D"
-
-                wind_val = "N/D"
-                if len(match.groups()) >= 5 and match.group(5):
-                    try:
-                        w_ms = float(match.group(5).replace(",", "."))
-                        wind_val = f"{w_ms * 3.6:.1f} km/h"
-                    except ValueError:
-                        wind_val = "N/D"
-
+            if temp_match:
+                t_val = f"{temp_match.group(1).replace(',', '.')} °C"
+                h_val = f"{hum_match.group(1)} %" if hum_match else "N/D"
                 return {
                     "name": "Stazione ARPAV Feltre",
-                    "url": url,
+                    "url": "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217",
                     "status": "online",
-                    "temp": temp_val,
-                    "humidity": hum_val,
+                    "temp": t_val,
+                    "humidity": h_val,
                     "pressure": "N/D",
-                    "wind": wind_val,
-                    "updated": time_part,
+                    "wind": "N/D",
+                    "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
                 }
     except Exception as e:
-        print(f"Errore ARPAV Feltre: {e}")
+        print(f"Errore connessione ARPAV diretta: {e}")
 
-    # Fallback su Stazione Feltre Centro se ARPAV non risponde
+    # Fallback su Stazione Feltre Centro (SoluzioniMeteo) per non lasciare mai il box offline
     try:
         fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
         temp, hum, press, wind = parse_meteotemplate(fallback_url)
@@ -348,12 +329,12 @@ def fetch_arpav():
                 "wind": wind,
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Errore Fallback Feltre: {e}")
 
     return {
-        "name": "Stazione ARPAV Feltre",
-        "url": url,
+        "name": "Stazione Feltre",
+        "url": "https://meteo.arpa.veneto.it/",
         "status": "offline",
         "temp": "N/D",
         "humidity": "N/D",
@@ -409,27 +390,18 @@ HTML_TEMPLATE = """
         <!-- Header -->
         <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 gap-4">
             <div class="flex items-center gap-4">
-                <!-- Disegnino Vipera Incazzata (SVG) -->
                 <svg class="w-12 h-12 md:w-16 md:h-16 text-emerald-500 shrink-0 filter drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Corpo/Collo arrotolato -->
                     <path d="M 20 85 C 5 60 40 50 25 35 C 18 28 30 15 50 15 C 70 15 82 28 75 35 C 60 50 95 60 80 85" stroke="#059669" stroke-width="8" stroke-linecap="round"/>
-                    <!-- Testa triangolare tipica della vipera -->
                     <polygon points="50,10 22,55 78,55" fill="#10b981" stroke="#047857" stroke-width="4"/>
-                    <!-- Occhi rossi incazzati -->
                     <polygon points="32,32 44,38 34,42" fill="#ef4444"/>
                     <polygon points="68,32 56,38 66,42" fill="#ef4444"/>
-                    <!-- Pupille a fessura verticale -->
                     <line x1="38" y1="33" x2="38" y2="40" stroke="#000" stroke-width="2"/>
                     <line x1="62" y1="33" x2="62" y2="40" stroke="#000" stroke-width="2"/>
-                    <!-- Sopracciglia arrabbiate marcate -->
                     <line x1="26" y1="26" x2="46" y2="36" stroke="#064e3b" stroke-width="4" stroke-linecap="round"/>
                     <line x1="74" y1="26" x2="54" y2="36" stroke="#064e3b" stroke-width="4" stroke-linecap="round"/>
-                    <!-- Bocca aperta minacciosa -->
                     <path d="M 30,48 Q 50,62 70,48" fill="#450a0a" stroke="#000" stroke-width="2"/>
-                    <!-- Zanne velenose bianche affilate -->
                     <polygon points="36,48 40,58 43,48" fill="#ffffff"/>
                     <polygon points="64,48 60,58 57,48" fill="#ffffff"/>
-                    <!-- Lingua biforcuta rossa estroflessa -->
                     <path d="M 50,54 L 50,75 L 42,85 M 50,75 L 58,85" stroke="#dc2626" stroke-width="3" stroke-linecap="round" fill="none"/>
                 </svg>
 
@@ -453,7 +425,6 @@ HTML_TEMPLATE = """
             {% for station in stations %}
             <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg hover:border-sky-500 transition duration-300 overflow-hidden flex flex-col justify-between">
                 <div>
-                    <!-- Header Card -->
                     <div class="p-5 border-b border-slate-700/60 flex justify-between items-start bg-slate-800/50">
                         <h2 class="text-lg font-semibold text-slate-100 leading-snug">{{ station.name }}</h2>
                         {% if station.status == 'online' %}
@@ -467,7 +438,6 @@ HTML_TEMPLATE = """
                         {% endif %}
                     </div>
 
-                    <!-- Body Card Data -->
                     <div class="p-5 grid grid-cols-2 gap-4">
                         <div class="col-span-2 bg-slate-900/60 p-3 rounded-lg flex items-center justify-between border border-slate-800">
                             <span class="text-slate-400 text-sm flex items-center gap-2">
@@ -499,7 +469,6 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- Footer Card -->
                 <div class="px-5 py-3 bg-slate-900/80 border-t border-slate-700/60 flex justify-between items-center text-xs text-slate-400">
                     <span>Aggiornato: {{ station.updated }}</span>
                     <a href="{{ station.url }}" target="_blank" class="text-sky-400 hover:text-sky-300 flex items-center gap-1 transition">
