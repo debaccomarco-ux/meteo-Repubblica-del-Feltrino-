@@ -3,12 +3,16 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
+# Disabilita gli avvisi per le connessioni senza verifica SSL (necessario per ARPAV)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 app = Flask(__name__)
 
-# Fuso orario italiano per Render / Linux
+# Fuso orario italiano
 ROME_TZ = ZoneInfo("Europe/Rome")
 
 # Cache dati (aggiornamento ogni 3 minuti)
@@ -26,7 +30,7 @@ HEADERS = {
 
 
 def parse_meteotemplate(url):
-    resp = requests.get(url, headers=HEADERS, timeout=8)
+    resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
     if resp.status_code == 200:
         soup = BeautifulSoup(resp.text, "html.parser")
         text = soup.get_text()
@@ -64,7 +68,7 @@ def parse_meteotemplate(url):
 def fetch_meteoms():
     url = "https://meteoms.altervista.org/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=8)
+        resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
@@ -120,7 +124,7 @@ def fetch_meteoms():
 def fetch_celarda():
     url = "http://www.celarda.altervista.org/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=8)
+        resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
@@ -176,7 +180,7 @@ def fetch_celarda():
 def fetch_festisei():
     url = "https://festisei.meteolodi.net/cam1/meteo/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=8)
+        resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
@@ -286,42 +290,53 @@ def fetch_arsie():
 def fetch_arpav():
     url = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=8)
+        resp = requests.get(url, headers=HEADERS, timeout=10, verify=False)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             rows = soup.find_all("tr")
             for row in rows:
-                cols = [c.get_text(strip=True) for c in row.find_all("td")]
-                if len(cols) >= 3 and re.match(r"\d{2}/\d{2}/\d{4}", cols[0]):
-                    temp_raw = cols[1].replace(",", ".")
-                    hum_raw = cols[2].replace(",", ".")
-                    temp_val = f"{temp_raw} °C" if temp_raw else "N/D"
-                    hum_val = f"{hum_raw} %" if hum_raw else "N/D"
-
-                    wind_val = "N/D"
-                    if len(cols) >= 7:
-                        try:
-                            w_ms = float(cols[6].replace(",", "."))
-                            wind_val = f"{w_ms * 3.6:.1f} km/h"
-                        except ValueError:
-                            wind_val = "N/D"
-
-                    last_time = (
-                        cols[0].split()[-1]
-                        if len(cols[0].split()) > 1
-                        else cols[0]
+                cols = [
+                    c.get_text(strip=True).replace("\xa0", " ")
+                    for c in row.find_all("td")
+                ]
+                if cols and len(cols) >= 3:
+                    match_date = re.search(
+                        r"\d{2}/\d{2}/\d{4}\s+(\d{2}:\d{2})", cols[0]
                     )
+                    if match_date:
+                        time_part = match_date.group(1)
+                        temp_raw = cols[1].replace(",", ".")
+                        hum_raw = cols[2].replace(",", ".")
 
-                    return {
-                        "name": "Stazione ARPAV Feltre",
-                        "url": url,
-                        "status": "online",
-                        "temp": temp_val,
-                        "humidity": hum_val,
-                        "pressure": "N/D",
-                        "wind": wind_val,
-                        "updated": last_time,
-                    }
+                        temp_val = (
+                            f"{temp_raw} °C"
+                            if temp_raw and temp_raw != "-"
+                            else "N/D"
+                        )
+                        hum_val = (
+                            f"{hum_raw} %"
+                            if hum_raw and hum_raw != "-"
+                            else "N/D"
+                        )
+
+                        wind_val = "N/D"
+                        if len(cols) >= 7:
+                            try:
+                                w_ms = float(cols[6].replace(",", "."))
+                                wind_val = f"{w_ms * 3.6:.1f} km/h"
+                            except ValueError:
+                                wind_val = "N/D"
+
+                        return {
+                            "name": "Stazione ARPAV Feltre",
+                            "url": url,
+                            "status": "online",
+                            "temp": temp_val,
+                            "humidity": hum_val,
+                            "pressure": "N/D",  # ARPAV Feltre non rileva pressione
+                            "wind": wind_val,
+                            "updated": time_part,
+                        }
     except Exception as e:
         print(f"Errore ARPAV Feltre: {e}")
 
