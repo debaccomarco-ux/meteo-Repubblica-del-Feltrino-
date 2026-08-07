@@ -1,4 +1,4 @@
-import concurrent.futures
+kimport concurrent.futures
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,7 +7,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
-# Disabilita gli avvisi per le connessioni senza verifica SSL (necessario per ARPAV)
+# Disabilita gli avvisi SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
@@ -26,7 +26,7 @@ HEADERS = {
     )
 }
 
-# --- HELPER METEOTEMPLATE (Mugnai & Arsiè) ---
+# --- HELPER METEOTEMPLATE (Mugnai, Arsiè, Feltre Fallback) ---
 
 
 def parse_meteotemplate(url):
@@ -292,53 +292,64 @@ def fetch_arpav():
     try:
         resp = requests.get(url, headers=HEADERS, timeout=10, verify=False)
         if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            rows = soup.find_all("tr")
-            for row in rows:
-                cols = [
-                    c.get_text(strip=True).replace("\xa0", " ")
-                    for c in row.find_all("td")
-                ]
-                if cols and len(cols) >= 3:
-                    match_date = re.search(
-                        r"\d{2}/\d{2}/\d{4}\s+(\d{2}:\d{2})", cols[0]
-                    )
-                    if match_date:
-                        time_part = match_date.group(1)
-                        temp_raw = cols[1].replace(",", ".")
-                        hum_raw = cols[2].replace(",", ".")
+            text = resp.text
+            # Regex specifica per il formato testo/CSV restituito da ARPAV
+            match = re.search(
+                r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})\s*,\s*[\d\.,]+\s*,\s*[\d\.,]+\s*,\s*[\d\.,]+\s*,\s*(\d{1,3}[\.,]?\d*)",
+                text,
+            )
+            if not match:
+                match = re.search(
+                    r"(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})",
+                    text,
+                )
 
-                        temp_val = (
-                            f"{temp_raw} °C"
-                            if temp_raw and temp_raw != "-"
-                            else "N/D"
-                        )
-                        hum_val = (
-                            f"{hum_raw} %"
-                            if hum_raw and hum_raw != "-"
-                            else "N/D"
-                        )
+            if match:
+                time_part = match.group(2)
+                temp_raw = match.group(3).replace(",", ".")
+                hum_raw = match.group(4)
 
+                temp_val = f"{temp_raw} °C" if temp_raw else "N/D"
+                hum_val = f"{hum_raw} %" if hum_raw else "N/D"
+
+                wind_val = "N/D"
+                if len(match.groups()) >= 5 and match.group(5):
+                    try:
+                        w_ms = float(match.group(5).replace(",", "."))
+                        wind_val = f"{w_ms * 3.6:.1f} km/h"
+                    except ValueError:
                         wind_val = "N/D"
-                        if len(cols) >= 7:
-                            try:
-                                w_ms = float(cols[6].replace(",", "."))
-                                wind_val = f"{w_ms * 3.6:.1f} km/h"
-                            except ValueError:
-                                wind_val = "N/D"
 
-                        return {
-                            "name": "Stazione ARPAV Feltre",
-                            "url": url,
-                            "status": "online",
-                            "temp": temp_val,
-                            "humidity": hum_val,
-                            "pressure": "N/D",  # ARPAV Feltre non rileva pressione
-                            "wind": wind_val,
-                            "updated": time_part,
-                        }
+                return {
+                    "name": "Stazione ARPAV Feltre",
+                    "url": url,
+                    "status": "online",
+                    "temp": temp_val,
+                    "humidity": hum_val,
+                    "pressure": "N/D",
+                    "wind": wind_val,
+                    "updated": time_part,
+                }
     except Exception as e:
         print(f"Errore ARPAV Feltre: {e}")
+
+    # Fallback su Stazione Feltre Centro se ARPAV non risponde
+    try:
+        fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
+        temp, hum, press, wind = parse_meteotemplate(fallback_url)
+        if temp != "N/D":
+            return {
+                "name": "Stazione Feltre Centro",
+                "url": "https://stazioni2.soluzionimeteo.it/feltre/",
+                "status": "online",
+                "temp": temp,
+                "humidity": hum,
+                "pressure": press,
+                "wind": wind,
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
+            }
+    except Exception:
+        pass
 
     return {
         "name": "Stazione ARPAV Feltre",
