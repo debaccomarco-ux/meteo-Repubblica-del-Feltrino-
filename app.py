@@ -24,7 +24,6 @@ HEADERS = {
 
 # --- HELPER METEOTEMPLATE ---
 
-
 def parse_meteotemplate(url):
     resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
     if resp.status_code == 200:
@@ -60,7 +59,6 @@ def parse_meteotemplate(url):
 
 # --- FETCHERS STAZIONI METEO ---
 
-
 def fetch_meteoms():
     url = "https://meteoms.altervista.org/"
     try:
@@ -90,15 +88,9 @@ def fetch_meteoms():
                 "name": "MeteoMS Feltre",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
                 "wind": wind.group(1).strip() if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -125,37 +117,19 @@ def fetch_celarda():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(
-                r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
-            )
+            temp = re.search(r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I)
             hum = re.search(r"Umidit[àa][^\d]*?(\d{1,3})\s*%", text, re.I)
-            press = re.search(
-                r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I
-            )
-            wind = re.search(
-                r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh",
-                text,
-                re.I,
-            )
+            press = re.search(r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I)
+            wind = re.search(r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh", text, re.I)
 
             return {
                 "name": "Meteo Celarda (Feltre)",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
-                "wind": (
-                    f"{wind.group(1).replace(',', '.')} km/h"
-                    if wind
-                    else "0.0 km/h"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
+                "wind": f"{wind.group(1).replace(',', '.')} km/h" if wind else "0.0 km/h",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
@@ -181,28 +155,18 @@ def fetch_festisei():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(
-                r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I
-            )
+            temp = re.search(r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I)
             hum = re.search(r"Umidità\s*(\d{1,3})\s*%", text, re.I)
-            press = re.search(
-                r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I
-            )
+            press = re.search(r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I)
             wind = re.search(r"Velocità\s*([\d\.\-]+\s*Km/h)", text, re.I)
 
             return {
                 "name": "Osservatorio Festisei - Pedavena",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
                 "wind": wind.group(1) if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -252,9 +216,7 @@ def fetch_meteomugnai():
 
 
 def fetch_arsie():
-    live_url = (
-        "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
-    )
+    live_url = "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
     site_url = "https://stazioni4.soluzionimeteo.it/arsie/indexMobile.php"
     try:
         temp, hum, press, wind = parse_meteotemplate(live_url)
@@ -316,7 +278,7 @@ def fetch_arpav():
         except Exception as e:
             print(f"Tentativo ARPAV fallito su {url}: {e}")
 
-    # Fallback trasparente su Feltre Centro (SoluzioniMeteo) se i server ARPAV bloccano l'IP Cloud
+    # Fallback trasparente su Feltre Centro se i server ARPAV bloccano l'IP Cloud
     try:
         fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
         temp, hum, press, wind = parse_meteotemplate(fallback_url)
@@ -383,7 +345,19 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta http-equiv="refresh" content="180">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Centrali meteo Repubblica del Feltrino di Marco Vipera...</title>
+    
+    <!-- TAG SEO PER GOOGLE -->
+    <title>Meteo Feltre - Centrali Meteo Repubblica del Feltrino</title>
+    <meta name="description" content="Stazioni meteo in tempo reale della Repubblica del Feltrino: Feltre Centro, Celarda, Mugnai, Pedavena, Arsiè e ARPAV. Temperature, umidità e vento in tempo reale.">
+    <meta name="keywords" content="meteo feltre, stazioni meteo feltrino, meteo celarda, meteo mugnai, meteo pedavena, arsie meteo, arpav feltre">
+    <meta name="robots" content="index, follow">
+
+    <!-- OPEN GRAPH PER CONDIVISIONE SOCIAL E WHATSAPP -->
+    <meta property="og:title" content="Centrali Meteo Repubblica del Feltrino">
+    <meta property="og:description" content="Rilevamento dati in tempo reale dalle stazioni meteo della zona del Feltrino.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://meteo-repubblica-del-feltrino.onrender.com/">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -489,6 +463,25 @@ HTML_TEMPLATE = """
 def index():
     weather_data = get_all_weather_data()
     return render_template_string(HTML_TEMPLATE, stations=weather_data)
+
+
+@app.route("/robots.txt")
+def robots():
+    txt = "User-agent: *\nAllow: /\nSitemap: https://meteo-repubblica-del-feltrino.onrender.com/sitemap.xml"
+    return txt, 200, {"Content-Type": "text/plain"}
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://meteo-repubblica-del-feltrino.onrender.com/</loc>
+        <changefreq>always</changefreq>
+        <priority>1.0</priority>
+    </url>
+</urlset>"""
+    return xml, 200, {"Content-Type": "application/xml"}
 
 
 if __name__ == "__main__":
