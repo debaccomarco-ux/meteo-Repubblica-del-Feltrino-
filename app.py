@@ -278,7 +278,6 @@ def fetch_arpav():
         except Exception as e:
             print(f"Tentativo ARPAV fallito su {url}: {e}")
 
-    # Fallback trasparente su Feltre Centro se i server ARPAV bloccano l'IP Cloud
     try:
         fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
         temp, hum, press, wind = parse_meteotemplate(fallback_url)
@@ -346,13 +345,11 @@ HTML_TEMPLATE = """
     <meta http-equiv="refresh" content="180">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- TAG SEO PER GOOGLE -->
     <title>Meteo Feltre - Centrali Meteo Repubblica del Feltrino</title>
     <meta name="description" content="Stazioni meteo in tempo reale della Repubblica del Feltrino: Feltre Centro, Celarda, Mugnai, Pedavena, Arsiè e ARPAV. Temperature, umidità e vento in tempo reale.">
     <meta name="keywords" content="meteo feltre, stazioni meteo feltrino, meteo celarda, meteo mugnai, meteo pedavena, arsie meteo, arpav feltre">
     <meta name="robots" content="index, follow">
 
-    <!-- OPEN GRAPH PER CONDIVISIONE SOCIAL E WHATSAPP -->
     <meta property="og:title" content="Centrali Meteo Repubblica del Feltrino">
     <meta property="og:description" content="Rilevamento dati in tempo reale dalle stazioni meteo della zona del Feltrino.">
     <meta property="og:type" content="website">
@@ -363,7 +360,6 @@ HTML_TEMPLATE = """
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
     <div class="max-w-7xl mx-auto">
-        <!-- Header -->
         <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 gap-4">
             <div class="flex items-center gap-4">
                 <svg class="w-12 h-12 md:w-16 md:h-16 text-emerald-500 shrink-0 filter drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -463,6 +459,12 @@ HTML_TEMPLATE = """
 def index():
     weather_data = get_all_weather_data()
     return render_template_string(HTML_TEMPLATE, stations=weather_data)
+
+
+# ROUTE PER VERIFICA GOOGLE SEARCH CONSOLE
+@app.route("/googleb5c183b558ce7715.html")
+def google_verification():
+    return "google-site-verification: googleb5c183b558ce7715.html"
 
 
 @app.route("/robots.txt")
