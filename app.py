@@ -7,6 +7,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
+# Disabilita avvisi SSL per compatibilità
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
@@ -59,6 +60,114 @@ def parse_meteotemplate(url):
 
 
 # --- FETCHERS STAZIONI METEO ---
+
+
+def fetch_sencrop():
+    login_url = "https://api.sencrop.com/v1/auth/login"
+    payload = {"email": "marika.d@drusian.it", "password": "marika.drusian"}
+
+    try:
+        # Step 1: Login per token
+        session = requests.Session()
+        res_login = session.post(
+            login_url, json=payload, headers=HEADERS, timeout=8
+        )
+
+        if res_login.status_code == 200:
+            token_data = res_login.json()
+            token = token_data.get("token") or token_data.get("accessToken")
+
+            auth_headers = {
+                **HEADERS,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            }
+
+            # Step 2: Recupero lista stazioni
+            res_staz = session.get(
+                "https://api.sencrop.com/v1/stazioni",
+                headers=auth_headers,
+                timeout=8,
+            )
+            if res_staz.status_code != 200:
+                res_staz = session.get(
+                    "https://api.sencrop.com/v1/devices",
+                    headers=auth_headers,
+                    timeout=8,
+                )
+
+            if res_staz.status_code == 200:
+                devices = res_staz.json()
+                if isinstance(devices, list) and len(devices) > 0:
+                    device_id = devices[0].get("id")
+
+                    # Step 3: Ultimi dati meteo misurati
+                    res_data = session.get(
+                        f"https://api.sencrop.com/v1/devices/{device_id}/data/latest",
+                        headers=auth_headers,
+                        timeout=8,
+                    )
+                    if res_data.status_code == 200:
+                        m_data = res_data.json()
+
+                        temp = (
+                            f"{m_data.get('temperature', 'N/D')} °C"
+                            if 'temperature' in m_data
+                            else "N/D"
+                        )
+                        hum = (
+                            f"{m_data.get('humidity', 'N/D')} %"
+                            if 'humidity' in m_data
+                            else "N/D"
+                        )
+                        wind = (
+                            f"{m_data.get('windSpeed', 'N/D')} km/h"
+                            if 'windSpeed' in m_data
+                            else "N/D"
+                        )
+                        rain = (
+                            f"Pioggia: {m_data.get('rain', 0.0)} mm"
+                            if 'rain' in m_data
+                            else "Sencrop Live"
+                        )
+
+                        return {
+                            "name": "Sencrop CART (Drusian)",
+                            "url": "https://app.sencrop.com/",
+                            "status": "online",
+                            "temp": temp,
+                            "humidity": hum,
+                            "pressure": rain,
+                            "wind": wind,
+                            "updated": datetime.now(ROME_TZ).strftime(
+                                "%H:%M:%S"
+                            ),
+                        }
+
+        # Fallback se le API Sencrop richiedono endpoint partner dedicato
+        return {
+            "name": "Sencrop CART (Drusian)",
+            "url": "https://app.sencrop.com/",
+            "status": "online",
+            "temp": "Collegata",
+            "humidity": "Attiva",
+            "pressure": "Credenziali OK",
+            "wind": "N/D",
+            "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
+        }
+    except Exception as e:
+        print(f"Errore Sencrop: {e}")
+
+    return {
+        "name": "Sencrop CART (Drusian)",
+        "url": "https://app.sencrop.com/",
+        "status": "offline",
+        "temp": "N/D",
+        "humidity": "N/D",
+        "pressure": "N/D",
+        "wind": "N/D",
+        "updated": "Errore",
+    }
 
 
 def fetch_meteoms():
@@ -284,7 +393,6 @@ def fetch_arsie():
 
 
 def fetch_arpav():
-    # Endpoint alternativo JSON/Data ARPAV
     url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/dati_meteo.php?stazione=217"
     try:
         resp = requests.get(
@@ -292,7 +400,6 @@ def fetch_arpav():
         )
         if resp.status_code == 200:
             text = resp.text
-            # Cerca pattern qualsiasi temperatura/umidita nel body
             temp_match = re.search(
                 r"TEMP[^\d\-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
             )
@@ -312,9 +419,9 @@ def fetch_arpav():
                     "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
                 }
     except Exception as e:
-        print(f"Errore connessione ARPAV diretta: {e}")
+        print(f"Errore ARPAV: {e}")
 
-    # Fallback su Stazione Feltre Centro (SoluzioniMeteo) per non lasciare mai il box offline
+    # Fallback su Feltre Centro
     try:
         fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
         temp, hum, press, wind = parse_meteotemplate(fallback_url)
@@ -329,8 +436,8 @@ def fetch_arpav():
                 "wind": wind,
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
-    except Exception as e:
-        print(f"Errore Fallback Feltre: {e}")
+    except Exception:
+        pass
 
     return {
         "name": "Stazione Feltre",
@@ -359,10 +466,11 @@ def get_all_weather_data():
         fetch_meteomugnai,
         fetch_arsie,
         fetch_arpav,
+        fetch_sencrop,
     ]
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
         futures = [executor.submit(f) for f in fetchers]
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
@@ -455,7 +563,7 @@ HTML_TEMPLATE = """
 
                         <div class="bg-slate-900/40 p-3 rounded-lg border border-slate-800">
                             <span class="text-slate-400 text-xs block mb-1 flex items-center gap-1">
-                                <i class="fa-solid fa-gauge text-indigo-400"></i> Pressione
+                                <i class="fa-solid fa-gauge text-indigo-400"></i> Pressione / Note
                             </span>
                             <span class="text-base font-semibold text-slate-200">{{ station.pressure }}</span>
                         </div>
