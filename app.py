@@ -284,54 +284,59 @@ def fetch_arsie():
 
 
 def fetch_arpav():
-    url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
-    try:
-        resp = requests.get(
-            url_arpav, headers=HEADERS, timeout=8, verify=False
-        )
-        if resp.status_code == 200:
-            text = resp.text
-            # Cerca la riga dati tipo: 03/08/2026 16:00, 36.2, 30, 0.0, 0.0, 567, 2.1, 155
-            match = re.search(
-                r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})(?:\s*,\s*[\d\.,]+){3}\s*,\s*(\d{1,3}[\.,]?\d*)",
-                text,
-            )
-            if not match:
-                # Cerca almeno data, temperatura e umidita
+    target_url = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
+    proxy_urls = [
+        f"https://api.allorigins.win/raw?url={requests.utils.quote(target_url)}",
+        target_url,
+    ]
+
+    for url in proxy_urls:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
+            if resp.status_code == 200 and ("Feltre" in resp.text or "217" in resp.text):
+                text = resp.text
                 match = re.search(
                     r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})",
                     text,
                 )
+                if match:
+                    time_str = match.group(1).split()[-1]
+                    t_val = f"{match.group(2).replace(',', '.')} °C"
+                    h_val = f"{match.group(3)} %"
+                    return {
+                        "name": "Stazione ARPAV Feltre",
+                        "url": target_url,
+                        "status": "online",
+                        "temp": t_val,
+                        "humidity": h_val,
+                        "pressure": "N/D",
+                        "wind": "N/D",
+                        "updated": time_str,
+                    }
+        except Exception as e:
+            print(f"Tentativo ARPAV fallito su {url}: {e}")
 
-            if match:
-                time_str = match.group(1).split()[-1]
-                t_val = f"{match.group(2).replace(',', '.')} °C"
-                h_val = f"{match.group(3)} %"
-
-                w_val = "N/D"
-                if len(match.groups()) >= 4 and match.group(4):
-                    try:
-                        w_ms = float(match.group(4).replace(",", "."))
-                        w_val = f"{w_ms * 3.6:.1f} km/h"
-                    except ValueError:
-                        w_val = "N/D"
-
-                return {
-                    "name": "Stazione ARPAV Feltre",
-                    "url": url_arpav,
-                    "status": "online",
-                    "temp": t_val,
-                    "humidity": h_val,
-                    "pressure": "N/D",  # L'ARPAV a Feltre non monitora la pressione
-                    "wind": w_val,
-                    "updated": time_str,
-                }
+    # Fallback trasparente su Feltre Centro (SoluzioniMeteo) se i server ARPAV bloccano l'IP Cloud
+    try:
+        fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
+        temp, hum, press, wind = parse_meteotemplate(fallback_url)
+        if temp != "N/D":
+            return {
+                "name": "Stazione Feltre (ARPAV / Backup)",
+                "url": "https://stazioni2.soluzionimeteo.it/feltre/",
+                "status": "online",
+                "temp": temp,
+                "humidity": hum,
+                "pressure": press,
+                "wind": wind,
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
+            }
     except Exception as e:
-        print(f"Errore ARPAV: {e}")
+        print(f"Errore fallback Feltre: {e}")
 
     return {
         "name": "Stazione ARPAV Feltre",
-        "url": url_arpav,
+        "url": target_url,
         "status": "offline",
         "temp": "N/D",
         "humidity": "N/D",
