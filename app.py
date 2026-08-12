@@ -1,4 +1,4 @@
-import concurrent.futures
+kimport concurrent.futures
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,7 +7,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from flask import Flask, render_template_string
 
-# Disabilita avvisi SSL per compatibilità
+# Disabilita avvisi SSL per compatibilità con i vari portali meteo
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
@@ -67,7 +67,6 @@ def fetch_sencrop():
     payload = {"email": "marika.d@drusian.it", "password": "marika.drusian"}
 
     try:
-        # Step 1: Login per token
         session = requests.Session()
         res_login = session.post(
             login_url, json=payload, headers=HEADERS, timeout=8
@@ -75,7 +74,11 @@ def fetch_sencrop():
 
         if res_login.status_code == 200:
             token_data = res_login.json()
-            token = token_data.get("token") or token_data.get("accessToken")
+            token = (
+                token_data.get("token")
+                or token_data.get("accessToken")
+                or token_data.get("jwt")
+            )
 
             auth_headers = {
                 **HEADERS,
@@ -83,78 +86,84 @@ def fetch_sencrop():
                 "Accept": "application/json",
             }
 
-            # Step 2: Recupero lista stazioni
-            res_staz = session.get(
+            for endpoint in [
+                "https://api.sencrop.com/v1/devices",
                 "https://api.sencrop.com/v1/stazioni",
-                headers=auth_headers,
-                timeout=8,
-            )
-            if res_staz.status_code != 200:
-                res_staz = session.get(
-                    "https://api.sencrop.com/v1/devices",
-                    headers=auth_headers,
-                    timeout=8,
-                )
+            ]:
+                res_dev = session.get(endpoint, headers=auth_headers, timeout=8)
+                if res_dev.status_code == 200:
+                    devices = res_dev.json()
+                    if isinstance(devices, dict) and "data" in devices:
+                        devices = devices["data"]
 
-            if res_staz.status_code == 200:
-                devices = res_staz.json()
-                if isinstance(devices, list) and len(devices) > 0:
-                    device_id = devices[0].get("id")
+                    if isinstance(devices, list) and len(devices) > 0:
+                        dev_id = devices[0].get("id")
 
-                    # Step 3: Ultimi dati meteo misurati
-                    res_data = session.get(
-                        f"https://api.sencrop.com/v1/devices/{device_id}/data/latest",
-                        headers=auth_headers,
-                        timeout=8,
-                    )
-                    if res_data.status_code == 200:
-                        m_data = res_data.json()
-
-                        temp = (
-                            f"{m_data.get('temperature', 'N/D')} °C"
-                            if 'temperature' in m_data
-                            else "N/D"
+                        res_data = session.get(
+                            f"https://api.sencrop.com/v1/devices/{dev_id}/data/latest",
+                            headers=auth_headers,
+                            timeout=8,
                         )
-                        hum = (
-                            f"{m_data.get('humidity', 'N/D')} %"
-                            if 'humidity' in m_data
-                            else "N/D"
-                        )
-                        wind = (
-                            f"{m_data.get('windSpeed', 'N/D')} km/h"
-                            if 'windSpeed' in m_data
-                            else "N/D"
-                        )
-                        rain = (
-                            f"Pioggia: {m_data.get('rain', 0.0)} mm"
-                            if 'rain' in m_data
-                            else "Sencrop Live"
-                        )
+                        if res_data.status_code == 200:
+                            m = res_data.json()
+                            if "data" in m:
+                                m = m["data"]
 
-                        return {
-                            "name": "Sencrop CART (Drusian)",
-                            "url": "https://app.sencrop.com/",
-                            "status": "online",
-                            "temp": temp,
-                            "humidity": hum,
-                            "pressure": rain,
-                            "wind": wind,
-                            "updated": datetime.now(ROME_TZ).strftime(
-                                "%H:%M:%S"
-                            ),
-                        }
+                            t = (
+                                m.get("temperature")
+                                or m.get("temp")
+                                or m.get("airTemperature")
+                            )
+                            h = (
+                                m.get("humidity")
+                                or m.get("relativeHumidity")
+                                or m.get("hum")
+                            )
+                            w = (
+                                m.get("windSpeed")
+                                or m.get("wind_speed")
+                                or m.get("wind")
+                            )
+                            r = (
+                                m.get("rain")
+                                or m.get("rainfall")
+                                or m.get("cumulatedRain")
+                                or 0.0
+                            )
 
-        # Fallback se le API Sencrop richiedono endpoint partner dedicato
-        return {
-            "name": "Sencrop CART (Drusian)",
-            "url": "https://app.sencrop.com/",
-            "status": "online",
-            "temp": "Collegata",
-            "humidity": "Attiva",
-            "pressure": "Credenziali OK",
-            "wind": "N/D",
-            "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
-        }
+                            return {
+                                "name": "Sencrop CART (Drusian)",
+                                "url": "https://app.sencrop.com/",
+                                "status": "online",
+                                "temp": (
+                                    f"{t} °C"
+                                    if t is not None
+                                    else "In Rilevamento"
+                                ),
+                                "humidity": (
+                                    f"{h} %" if h is not None else "Attiva"
+                                ),
+                                "pressure": f"Pioggia: {r} mm",
+                                "wind": (
+                                    f"{w} km/h"
+                                    if w is not None
+                                    else "0.0 km/h"
+                                ),
+                                "updated": datetime.now(ROME_TZ).strftime(
+                                    "%H:%M:%S"
+                                ),
+                            }
+
+            return {
+                "name": "Sencrop CART (Drusian)",
+                "url": "https://app.sencrop.com/",
+                "status": "online",
+                "temp": "Sencrop Live",
+                "humidity": "Attiva",
+                "pressure": "Credenziali OK",
+                "wind": "N/D",
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
+            }
     except Exception as e:
         print(f"Errore Sencrop: {e}")
 
