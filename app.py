@@ -22,6 +22,7 @@ HEADERS = {
     )
 }
 
+
 def parse_meteotemplate(url):
     resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
     if resp.status_code == 200:
@@ -54,80 +55,110 @@ def parse_meteotemplate(url):
 
     return "N/D", "N/D", "N/D", "N/D"
 
+
 def fetch_sencrop():
     login_url = "https://api.sencrop.com/v1/auth/login"
     payload = {"email": "marika.d@drusian.it", "password": "marika.drusian"}
 
     try:
         session = requests.Session()
-        res_login = session.post(login_url, json=payload, headers=HEADERS, timeout=8)
+        res_login = session.post(
+            login_url, json=payload, headers=HEADERS, timeout=8
+        )
 
         if res_login.status_code == 200:
             token_data = res_login.json()
-            token = token_data.get("token") or token_data.get("accessToken") or token_data.get("jwt")
-            
+            token = (
+                token_data.get("token")
+                or token_data.get("accessToken")
+                or token_data.get("jwt")
+            )
+
             auth_headers = {
                 **HEADERS,
                 "Authorization": f"Bearer {token}",
-                "Accept": "application/json"
+                "Accept": "application/json",
             }
-            
+
             debug_info = "Login OK."
-            
             endpoints = [
-                "https://api.sencrop.com/v1/devices", 
+                "https://api.sencrop.com/v1/devices",
                 "https://api.sencrop.com/v2/devices",
-                "https://api.sencrop.com/v1/stations"
+                "https://api.sencrop.com/v1/stations",
             ]
-            
+
             for endpoint in endpoints:
                 res_dev = session.get(endpoint, headers=auth_headers, timeout=8)
                 debug_info += f" [{endpoint[-7:]}:{res_dev.status_code}]"
-                
+
                 if res_dev.status_code == 200:
                     devices = res_dev.json()
-                    
                     if isinstance(devices, dict) and "data" in devices:
                         devices = devices["data"]
                     elif isinstance(devices, dict) and "devices" in devices:
                         devices = devices["devices"]
-                        
-                    if isinstance(devices, list):
-                        if len(devices) > 0:
-                            dev_id = devices[0].get("id")
-                            debug_info += f" ID:{dev_id}."
-                            
-                            data_urls = [
-                                f"https://api.sencrop.com/v1/devices/{dev_id}/data/latest",
-                                f"https://api.sencrop.com/v2/devices/{dev_id}/data/latest"
-                            ]
-                            
-                            for url_data in data_urls:
-                                res_data = session.get(url_data, headers=auth_headers, timeout=8)
-                                if res_data.status_code == 200:
-                                    m = res_data.json()
-                                    if "data" in m: m = m["data"]
-                                    
-                                    t = m.get('temperature') or m.get('temp') or m.get('airTemperature')
-                                    h = m.get('humidity') or m.get('relativeHumidity') or m.get('hum')
-                                    w = m.get('windSpeed') or m.get('wind_speed') or m.get('wind')
-                                    r = m.get('rain') or m.get('rainfall') or m.get('cumulatedRain') or 0.0
 
-                                    return {
-                                        "name": "Sencrop CART (Drusian)",
-                                        "url": "https://app.sencrop.com/",
-                                        "status": "online",
-                                        "temp": f"{t} °C" if t is not None else "N/D",
-                                        "humidity": f"{h} %" if h is not None else "N/D",
-                                        "pressure": f"Pioggia: {r} mm",
-                                        "wind": f"{w} km/h" if w is not None else "N/D",
-                                        "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S")
-                                    }
-                            debug_info += " Dati vuoti."
-                        else:
-                            debug_info += " Lista vuota."
+                    if isinstance(devices, list) and len(devices) > 0:
+                        dev_id = devices[0].get("id")
+                        debug_info += f" ID:{dev_id}."
+
+                        data_urls = [
+                            f"https://api.sencrop.com/v1/devices/{dev_id}/data/latest",
+                            f"https://api.sencrop.com/v2/devices/{dev_id}/data/latest",
+                        ]
+
+                        for url_data in data_urls:
+                            res_data = session.get(
+                                url_data, headers=auth_headers, timeout=8
+                            )
+                            if res_data.status_code == 200:
+                                m = res_data.json()
+                                if "data" in m:
+                                    m = m["data"]
+
+                                t = (
+                                    m.get("temperature")
+                                    or m.get("temp")
+                                    or m.get("airTemperature")
+                                )
+                                h = (
+                                    m.get("humidity")
+                                    or m.get("relativeHumidity")
+                                    or m.get("hum")
+                                )
+                                w = (
+                                    m.get("windSpeed")
+                                    or m.get("wind_speed")
+                                    or m.get("wind")
+                                )
+                                r = (
+                                    m.get("rain")
+                                    or m.get("rainfall")
+                                    or m.get("cumulatedRain")
+                                    or 0.0
+                                )
+
+                                return {
+                                    "name": "Sencrop CART (Drusian)",
+                                    "url": "https://app.sencrop.com/",
+                                    "status": "online",
+                                    "temp": (
+                                        f"{t} °C" if t is not None else "N/D"
+                                    ),
+                                    "humidity": (
+                                        f"{h} %" if h is not None else "N/D"
+                                    ),
+                                    "pressure": f"Pioggia: {r} mm",
+                                    "wind": (
+                                        f"{w} km/h" if w is not None else "N/D"
+                                    ),
+                                    "updated": datetime.now(ROME_TZ).strftime(
+                                        "%H:%M:%S"
+                                    ),
+                                }
+                        debug_info += " Dati vuoti."
                     else:
-                        debug_info += " No list."
+                        debug_info += " Lista vuota."
 
             return {
                 "name": "Sencrop Debug",
@@ -137,7 +168,7 @@ def fetch_sencrop():
                 "humidity": "Info:",
                 "pressure": debug_info,
                 "wind": "N/D",
-                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S")
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
         else:
             return {
@@ -148,7 +179,7 @@ def fetch_sencrop():
                 "humidity": f"Code: {res_login.status_code}",
                 "pressure": "Credenziali errate?",
                 "wind": "N/D",
-                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S")
+                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
         print(f"Errore Sencrop: {e}")
@@ -160,8 +191,9 @@ def fetch_sencrop():
             "humidity": "N/D",
             "pressure": str(e)[:30],
             "wind": "N/D",
-            "updated": "Errore"
+            "updated": "Errore",
         }
+
 
 def fetch_meteoms():
     url = "https://meteoms.altervista.org/"
@@ -218,6 +250,7 @@ def fetch_meteoms():
         "updated": "Errore",
     }
 
+
 def fetch_celarda():
     url = "http://www.celarda.altervista.org/"
     try:
@@ -273,6 +306,7 @@ def fetch_celarda():
         "updated": "Errore",
     }
 
+
 def fetch_festisei():
     url = "https://festisei.meteolodi.net/cam1/meteo/"
     try:
@@ -320,6 +354,7 @@ def fetch_festisei():
         "updated": "Errore",
     }
 
+
 def fetch_meteomugnai():
     live_url = "https://www.meteomugnai.it/mobile/pages/station/liveData.php"
     site_url = "https://www.meteomugnai.it/indexMobile.php"
@@ -348,6 +383,7 @@ def fetch_meteomugnai():
         "wind": "N/D",
         "updated": "Errore",
     }
+
 
 def fetch_arsie():
     live_url = (
@@ -379,6 +415,7 @@ def fetch_arsie():
         "wind": "N/D",
         "updated": "Errore",
     }
+
 
 def fetch_arpav():
     url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/dati_meteo.php?stazione=217"
@@ -437,6 +474,7 @@ def fetch_arpav():
         "updated": "Errore",
     }
 
+
 def get_all_weather_data():
     now = datetime.now(ROME_TZ)
     if (
@@ -464,6 +502,7 @@ def get_all_weather_data():
     cache["data"] = results
     cache["last_updated"] = now
     return results
+
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -570,3 +609,14 @@ HTML_TEMPLATE = """
     </div>
 </body>
 </html>
+"""
+
+
+@app.route("/")
+def index():
+    weather_data = get_all_weather_data()
+    return render_template_string(HTML_TEMPLATE, stations=weather_data)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=False)
