@@ -1,4 +1,4 @@
-import concurrent.futures
+kimport concurrent.futures
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -23,6 +23,7 @@ HEADERS = {
 }
 
 # --- HELPER METEOTEMPLATE ---
+
 
 def parse_meteotemplate(url):
     resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
@@ -59,6 +60,7 @@ def parse_meteotemplate(url):
 
 # --- FETCHERS STAZIONI METEO ---
 
+
 def fetch_meteoms():
     url = "https://meteoms.altervista.org/"
     try:
@@ -88,9 +90,15 @@ def fetch_meteoms():
                 "name": "MeteoMS Feltre",
                 "url": url,
                 "status": "online",
-                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
+                "temp": (
+                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
+                ),
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
+                "pressure": (
+                    f"{press.group(1).replace(',', '.')} hPa"
+                    if press
+                    else "N/D"
+                ),
                 "wind": wind.group(1).strip() if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -117,19 +125,37 @@ def fetch_celarda():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I)
+            temp = re.search(
+                r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
+            )
             hum = re.search(r"Umidit[àa][^\d]*?(\d{1,3})\s*%", text, re.I)
-            press = re.search(r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I)
-            wind = re.search(r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh", text, re.I)
+            press = re.search(
+                r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I
+            )
+            wind = re.search(
+                r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh",
+                text,
+                re.I,
+            )
 
             return {
                 "name": "Meteo Celarda (Feltre)",
                 "url": url,
                 "status": "online",
-                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
+                "temp": (
+                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
+                ),
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
-                "wind": f"{wind.group(1).replace(',', '.')} km/h" if wind else "0.0 km/h",
+                "pressure": (
+                    f"{press.group(1).replace(',', '.')} hPa"
+                    if press
+                    else "N/D"
+                ),
+                "wind": (
+                    f"{wind.group(1).replace(',', '.')} km/h"
+                    if wind
+                    else "0.0 km/h"
+                ),
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
@@ -155,18 +181,28 @@ def fetch_festisei():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I)
+            temp = re.search(
+                r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I
+            )
             hum = re.search(r"Umidità\s*(\d{1,3})\s*%", text, re.I)
-            press = re.search(r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I)
+            press = re.search(
+                r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I
+            )
             wind = re.search(r"Velocità\s*([\d\.\-]+\s*Km/h)", text, re.I)
 
             return {
                 "name": "Osservatorio Festisei - Pedavena",
                 "url": url,
                 "status": "online",
-                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
+                "temp": (
+                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
+                ),
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
+                "pressure": (
+                    f"{press.group(1).replace(',', '.')} hPa"
+                    if press
+                    else "N/D"
+                ),
                 "wind": wind.group(1) if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -216,7 +252,9 @@ def fetch_meteomugnai():
 
 
 def fetch_arsie():
-    live_url = "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
+    live_url = (
+        "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
+    )
     site_url = "https://stazioni4.soluzionimeteo.it/arsie/indexMobile.php"
     try:
         temp, hum, press, wind = parse_meteotemplate(live_url)
@@ -246,33 +284,54 @@ def fetch_arsie():
 
 
 def fetch_arpav():
-    url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/dati_meteo.php?stazione=217"
+    url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217&sens=TEMP"
     try:
-        resp = requests.get(url_arpav, headers=HEADERS, timeout=6, verify=False)
+        resp = requests.get(
+            url_arpav, headers=HEADERS, timeout=8, verify=False
+        )
         if resp.status_code == 200:
             text = resp.text
-            temp_match = re.search(r"TEMP[^\d\-]*?(-?\d{1,2}[\.,]\d+)", text, re.I)
-            hum_match = re.search(r"UMID[^\d]*?(\d{1,3})", text, re.I)
+            # Cerca la riga dati tipo: 03/08/2026 16:00, 36.2, 30, 0.0, 0.0, 567, 2.1, 155
+            match = re.search(
+                r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})(?:\s*,\s*[\d\.,]+){3}\s*,\s*(\d{1,3}[\.,]?\d*)",
+                text,
+            )
+            if not match:
+                # Cerca almeno data, temperatura e umidita
+                match = re.search(
+                    r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*,\s*(-?\d{1,2}[\.,]\d+)\s*,\s*(\d{1,3})",
+                    text,
+                )
 
-            if temp_match:
-                t_val = f"{temp_match.group(1).replace(',', '.')} °C"
-                h_val = f"{hum_match.group(1)} %" if hum_match else "N/D"
+            if match:
+                time_str = match.group(1).split()[-1]
+                t_val = f"{match.group(2).replace(',', '.')} °C"
+                h_val = f"{match.group(3)} %"
+
+                w_val = "N/D"
+                if len(match.groups()) >= 4 and match.group(4):
+                    try:
+                        w_ms = float(match.group(4).replace(",", "."))
+                        w_val = f"{w_ms * 3.6:.1f} km/h"
+                    except ValueError:
+                        w_val = "N/D"
+
                 return {
                     "name": "Stazione ARPAV Feltre",
-                    "url": "https://meteo.arpa.veneto.it/meteo/dati_meteo/GrafStaz.html?staz=217",
+                    "url": url_arpav,
                     "status": "online",
                     "temp": t_val,
                     "humidity": h_val,
-                    "pressure": "N/D",
-                    "wind": "N/D",
-                    "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
+                    "pressure": "N/D",  # L'ARPAV a Feltre non monitora la pressione
+                    "wind": w_val,
+                    "updated": time_str,
                 }
     except Exception as e:
         print(f"Errore ARPAV: {e}")
 
     return {
         "name": "Stazione ARPAV Feltre",
-        "url": "https://meteo.arpa.veneto.it/",
+        "url": url_arpav,
         "status": "offline",
         "temp": "N/D",
         "humidity": "N/D",
@@ -420,10 +479,12 @@ HTML_TEMPLATE = """
 </html>
 """
 
+
 @app.route("/")
 def index():
     weather_data = get_all_weather_data()
     return render_template_string(HTML_TEMPLATE, stations=weather_data)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=False)
