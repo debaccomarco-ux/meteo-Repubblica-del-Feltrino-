@@ -22,6 +22,7 @@ HEADERS = {
     )
 }
 
+# --- HELPER METEOTEMPLATE ---
 
 def parse_meteotemplate(url):
     resp = requests.get(url, headers=HEADERS, timeout=8, verify=False)
@@ -56,144 +57,7 @@ def parse_meteotemplate(url):
     return "N/D", "N/D", "N/D", "N/D"
 
 
-def fetch_sencrop():
-    login_url = "https://api.sencrop.com/v1/auth/login"
-    payload = {"email": "marika.d@drusian.it", "password": "marika.drusian"}
-
-    try:
-        session = requests.Session()
-        res_login = session.post(
-            login_url, json=payload, headers=HEADERS, timeout=8
-        )
-
-        if res_login.status_code == 200:
-            token_data = res_login.json()
-            token = (
-                token_data.get("token")
-                or token_data.get("accessToken")
-                or token_data.get("jwt")
-            )
-
-            auth_headers = {
-                **HEADERS,
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-            }
-
-            debug_info = "Login OK."
-            endpoints = [
-                "https://api.sencrop.com/v1/devices",
-                "https://api.sencrop.com/v2/devices",
-                "https://api.sencrop.com/v1/stations",
-            ]
-
-            for endpoint in endpoints:
-                res_dev = session.get(endpoint, headers=auth_headers, timeout=8)
-                debug_info += f" [{endpoint[-7:]}:{res_dev.status_code}]"
-
-                if res_dev.status_code == 200:
-                    devices = res_dev.json()
-                    if isinstance(devices, dict) and "data" in devices:
-                        devices = devices["data"]
-                    elif isinstance(devices, dict) and "devices" in devices:
-                        devices = devices["devices"]
-
-                    if isinstance(devices, list) and len(devices) > 0:
-                        dev_id = devices[0].get("id")
-                        debug_info += f" ID:{dev_id}."
-
-                        data_urls = [
-                            f"https://api.sencrop.com/v1/devices/{dev_id}/data/latest",
-                            f"https://api.sencrop.com/v2/devices/{dev_id}/data/latest",
-                        ]
-
-                        for url_data in data_urls:
-                            res_data = session.get(
-                                url_data, headers=auth_headers, timeout=8
-                            )
-                            if res_data.status_code == 200:
-                                m = res_data.json()
-                                if "data" in m:
-                                    m = m["data"]
-
-                                t = (
-                                    m.get("temperature")
-                                    or m.get("temp")
-                                    or m.get("airTemperature")
-                                )
-                                h = (
-                                    m.get("humidity")
-                                    or m.get("relativeHumidity")
-                                    or m.get("hum")
-                                )
-                                w = (
-                                    m.get("windSpeed")
-                                    or m.get("wind_speed")
-                                    or m.get("wind")
-                                )
-                                r = (
-                                    m.get("rain")
-                                    or m.get("rainfall")
-                                    or m.get("cumulatedRain")
-                                    or 0.0
-                                )
-
-                                return {
-                                    "name": "Sencrop CART (Drusian)",
-                                    "url": "https://app.sencrop.com/",
-                                    "status": "online",
-                                    "temp": (
-                                        f"{t} °C" if t is not None else "N/D"
-                                    ),
-                                    "humidity": (
-                                        f"{h} %" if h is not None else "N/D"
-                                    ),
-                                    "pressure": f"Pioggia: {r} mm",
-                                    "wind": (
-                                        f"{w} km/h" if w is not None else "N/D"
-                                    ),
-                                    "updated": datetime.now(ROME_TZ).strftime(
-                                        "%H:%M:%S"
-                                    ),
-                                }
-                        debug_info += " Dati vuoti."
-                    else:
-                        debug_info += " Lista vuota."
-
-            return {
-                "name": "Sencrop Debug",
-                "url": "https://app.sencrop.com/",
-                "status": "offline",
-                "temp": "Debug:",
-                "humidity": "Info:",
-                "pressure": debug_info,
-                "wind": "N/D",
-                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
-            }
-        else:
-            return {
-                "name": "Sencrop Error",
-                "url": "https://app.sencrop.com/",
-                "status": "offline",
-                "temp": "Errore",
-                "humidity": f"Code: {res_login.status_code}",
-                "pressure": "Credenziali errate?",
-                "wind": "N/D",
-                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
-            }
-    except Exception as e:
-        print(f"Errore Sencrop: {e}")
-        return {
-            "name": "Sencrop Exception",
-            "url": "https://app.sencrop.com/",
-            "status": "offline",
-            "temp": "N/D",
-            "humidity": "N/D",
-            "pressure": str(e)[:30],
-            "wind": "N/D",
-            "updated": "Errore",
-        }
-
+# --- FETCHERS STAZIONI METEO ---
 
 def fetch_meteoms():
     url = "https://meteoms.altervista.org/"
@@ -224,15 +88,9 @@ def fetch_meteoms():
                 "name": "MeteoMS Feltre",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
                 "wind": wind.group(1).strip() if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -259,37 +117,19 @@ def fetch_celarda():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(
-                r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
-            )
+            temp = re.search(r"Temperatura attuale[^\d\.-]*?(-?\d{1,2}[\.,]\d+)", text, re.I)
             hum = re.search(r"Umidit[àa][^\d]*?(\d{1,3})\s*%", text, re.I)
-            press = re.search(
-                r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I
-            )
-            wind = re.search(
-                r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh",
-                text,
-                re.I,
-            )
+            press = re.search(r"Pressione S\.L\.M\.[^\d]*?(\d{3,4}[\.,]?\d*)", text, re.I)
+            wind = re.search(r"Forza media vento[^\d\.-]*?(\d{1,3}[\.,]?\d*)\s*kmh", text, re.I)
 
             return {
                 "name": "Meteo Celarda (Feltre)",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
-                "wind": (
-                    f"{wind.group(1).replace(',', '.')} km/h"
-                    if wind
-                    else "0.0 km/h"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
+                "wind": f"{wind.group(1).replace(',', '.')} km/h" if wind else "0.0 km/h",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
     except Exception as e:
@@ -315,28 +155,18 @@ def fetch_festisei():
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text()
 
-            temp = re.search(
-                r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I
-            )
+            temp = re.search(r"Temperatura\s*(-?\d{1,2}[\.,]\d+)\s*°C", text, re.I)
             hum = re.search(r"Umidità\s*(\d{1,3})\s*%", text, re.I)
-            press = re.search(
-                r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I
-            )
+            press = re.search(r"Pressione\s*(\d{3,4}[\.,]?\d*)\s*hPa", text, re.I)
             wind = re.search(r"Velocità\s*([\d\.\-]+\s*Km/h)", text, re.I)
 
             return {
                 "name": "Osservatorio Festisei - Pedavena",
                 "url": url,
                 "status": "online",
-                "temp": (
-                    f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D"
-                ),
+                "temp": f"{temp.group(1).replace(',', '.')} °C" if temp else "N/D",
                 "humidity": f"{hum.group(1)} %" if hum else "N/D",
-                "pressure": (
-                    f"{press.group(1).replace(',', '.')} hPa"
-                    if press
-                    else "N/D"
-                ),
+                "pressure": f"{press.group(1).replace(',', '.')} hPa" if press else "N/D",
                 "wind": wind.group(1) if wind else "N/D",
                 "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
             }
@@ -386,9 +216,7 @@ def fetch_meteomugnai():
 
 
 def fetch_arsie():
-    live_url = (
-        "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
-    )
+    live_url = "https://stazioni4.soluzionimeteo.it/arsie/mobile/pages/station/liveData.php"
     site_url = "https://stazioni4.soluzionimeteo.it/arsie/indexMobile.php"
     try:
         temp, hum, press, wind = parse_meteotemplate(live_url)
@@ -420,14 +248,10 @@ def fetch_arsie():
 def fetch_arpav():
     url_arpav = "https://meteo.arpa.veneto.it/meteo/dati_meteo/dati_meteo.php?stazione=217"
     try:
-        resp = requests.get(
-            url_arpav, headers=HEADERS, timeout=6, verify=False
-        )
+        resp = requests.get(url_arpav, headers=HEADERS, timeout=6, verify=False)
         if resp.status_code == 200:
             text = resp.text
-            temp_match = re.search(
-                r"TEMP[^\d\-]*?(-?\d{1,2}[\.,]\d+)", text, re.I
-            )
+            temp_match = re.search(r"TEMP[^\d\-]*?(-?\d{1,2}[\.,]\d+)", text, re.I)
             hum_match = re.search(r"UMID[^\d]*?(\d{1,3})", text, re.I)
 
             if temp_match:
@@ -446,25 +270,8 @@ def fetch_arpav():
     except Exception as e:
         print(f"Errore ARPAV: {e}")
 
-    try:
-        fallback_url = "https://stazioni2.soluzionimeteo.it/feltre/mobile/pages/station/liveData.php"
-        temp, hum, press, wind = parse_meteotemplate(fallback_url)
-        if temp != "N/D":
-            return {
-                "name": "Stazione Feltre Centro",
-                "url": "https://stazioni2.soluzionimeteo.it/feltre/",
-                "status": "online",
-                "temp": temp,
-                "humidity": hum,
-                "pressure": press,
-                "wind": wind,
-                "updated": datetime.now(ROME_TZ).strftime("%H:%M:%S"),
-            }
-    except Exception:
-        pass
-
     return {
-        "name": "Stazione Feltre",
+        "name": "Stazione ARPAV Feltre",
         "url": "https://meteo.arpa.veneto.it/",
         "status": "offline",
         "temp": "N/D",
@@ -490,11 +297,10 @@ def get_all_weather_data():
         fetch_meteomugnai,
         fetch_arsie,
         fetch_arpav,
-        fetch_sencrop,
     ]
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(f) for f in fetchers]
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
@@ -503,6 +309,8 @@ def get_all_weather_data():
     cache["last_updated"] = now
     return results
 
+
+# --- DASHBOARD TEMPLATE HTML ---
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -517,6 +325,7 @@ HTML_TEMPLATE = """
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
     <div class="max-w-7xl mx-auto">
+        <!-- Header -->
         <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 gap-4">
             <div class="flex items-center gap-4">
                 <svg class="w-12 h-12 md:w-16 md:h-16 text-emerald-500 shrink-0 filter drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -611,12 +420,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
-
 @app.route("/")
 def index():
     weather_data = get_all_weather_data()
     return render_template_string(HTML_TEMPLATE, stations=weather_data)
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=False)
